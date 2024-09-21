@@ -21,7 +21,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract LotteryManager {
     using SafeERC20 for IERC20;
 
-    IPoolManager _poolManager;
+    IPoolManager poolManager;
     PositionManager positionManager;
     address usdc;
 
@@ -32,10 +32,30 @@ contract LotteryManager {
 
     mapping(address => LotteryInfo) public lotteries;
 
-    function createLottery(string calldata _name, string calldata _symbol) external {
+    constructor(address _poolManager, address _positionManager, address _usdc) {
+        poolManager = IPoolManager(_poolManager);
+        positionManager = PositionManager(_positionManager);
+        usdc= _usdc;
+    }
+
+    function createLottery(string calldata _name, string calldata _symbol) external returns (address) {
         LotteryToken lotteryToken = new LotteryToken(_name, _symbol);
-        Lottery lottery = new Lottery(_poolManager, usdc, address(lotteryToken));
+
+
+        Lottery lottery = new Lottery(poolManager, usdc, address(lotteryToken));
         lotteries[address(lottery)] = LotteryInfo(address(lotteryToken), address(lottery));
+
+/*         PoolKey memory pool = PoolKey({
+            currency0: Currency.wrap(lotteryToken),
+            currency1: Currency.wrap(usdc),
+            fee: 0,
+            tickSpacing: 60,
+            hooks: IHooks(lottery.lottery)
+        });
+
+        poolManager.initialize(pool, Constants.SQRT_PRICE_1_1, bytes("")); */
+
+        return address(lottery);
     }
 
     function addLiquidity(address _lottery, uint256 amount) external {

@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseHook, Hooks, IPoolManager} from "v4-periphery/base/hooks/BaseHook.sol";
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import { Constants } from "@uniswap/v4-core/test/utils/Constants.sol";
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
@@ -62,7 +63,11 @@ contract Lottery is ILottery, IEntropyConsumer, BaseHook {
         lotteryState.isActive = true;
         manager = LotteryManager(msg.sender);
     }
-
+/* 
+    function validateHookAddress(BaseHook _this) internal pure virtual override {
+        
+    }
+ */
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,

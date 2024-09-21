@@ -10,6 +10,12 @@ The lottery system allows for two types of participants:
 
 LPs provide liquidity to the lottery pool, while players buy lottery tickets. The system uses Uniswap V4 hooks to manage the pools and determine the outcomes.
 
+## Deployments:
+We are using Base Sepolia.
+
+  Manager deployed to:  0xe2556948701831C7174aa7207FdcB28A092737F9
+  Lottery deployed to:  0x99c1bC023bfaF144316794bbd51d3b357693eF1e
+
 ## Smart Contracts
 
 ### Lottery.sol

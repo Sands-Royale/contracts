@@ -13,9 +13,3 @@
 [submodule "lib/lz-oapp-v2"]
 	path = lib/lz-oapp-v2
 	url = https://github.com/lajosdeme/lz-oapp-v2
-[submodule "lib/v3-periphery"]
-	path = lib/v3-periphery
-	url = https://github.com/uniswap/v3-periphery
-[submodule "lib/v3-core"]
-	path = lib/v3-core
-	url = https://github.com/uniswap/v3-core
