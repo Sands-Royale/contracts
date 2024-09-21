@@ -15,14 +15,8 @@ import {LiquidityAmounts} from "./external/LiquidityAmounts.sol";
 import "./ILottery.sol";
 import "./external/IEntropy.sol";
 import "./external/IEntropyConsumer.sol";
+import "./LotteryManager.sol";
 
-/* 
-when we add liquidity, we also need to mint equivalent of the other token and deposit into the pool
-
-when we remove liquidity, we also need to burn an equivalent of the other token
-
-we need a a liqudity manager, and deposits go through it
- */
 contract Lottery is ILottery, IEntropyConsumer, BaseHook {
     LotteryState public lotteryState;
 
@@ -58,10 +52,15 @@ contract Lottery is ILottery, IEntropyConsumer, BaseHook {
     // total amount in LP pool
     uint256 public lpPoolTotal;
 
+    address public lastWinnerAddress;
+
+    LotteryManager manager;
+
     constructor(IPoolManager _poolManager, address _usdcToken, address _lotteryToken) BaseHook(_poolManager) {
         usdcToken = IERC20(_usdcToken);
         lotteryToken = IERC20(_lotteryToken);
         lotteryState.isActive = true;
+        manager = LotteryManager(msg.sender);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -143,8 +142,10 @@ contract Lottery is ILottery, IEntropyConsumer, BaseHook {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external override returns (bytes4) {
-        address user = abi.decode(hookData, (address));
-
+        (address user, address _manager) = abi.decode(hookData, (address,address));
+        if (address(manager) != _manager) {
+            revert("Invalid caller");
+        }
 
         (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(IPoolManager(address(poolManager)), key.toId());
 
@@ -175,10 +176,7 @@ contract Lottery is ILottery, IEntropyConsumer, BaseHook {
     ) external override returns (bytes4) {
         address user = abi.decode(hookData, (address));
 
-        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(
-            IPoolManager(address(poolManager)), 
-            key.toId()
-            );
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(IPoolManager(address(poolManager)), key.toId());
 
         (, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
             sqrtPriceX96,
@@ -196,6 +194,8 @@ contract Lottery is ILottery, IEntropyConsumer, BaseHook {
             lpPoolTotal -= amount1;
             lpsInfo[user].principal -= amount1;
         }
+
+        manager.removeLiquidity(user, amount1);
 
         return BaseHook.beforeRemoveLiquidity.selector;
     }
@@ -221,9 +221,85 @@ contract Lottery is ILottery, IEntropyConsumer, BaseHook {
     }
 
     function drawWinner(bytes32 randomNumber) internal {
-        if (userPoolTotal >= lpPoolTotal) {
+        if (userPoolTotal >= lotteryState.lpPool) {
+            // Jackpot is fully funded by users, so winner gets the user pool and LP's get the LP pool
             uint256 winningTicket = getWinningTicket(randomNumber, totalTicketCountBps);
-        } else {}
+            lastWinnerAddress = findWinnerFromUsers(winningTicket);
+
+            uint256 winAmount = userPoolTotal;
+            User storage winner = usersInfo[lastWinnerAddress];
+            winner.winningsClaimable += winAmount;
+
+            returnLpPoolBackToLps();
+
+            // TODO: emit event
+        } else {
+            // Jackpot is not fully funded by users, i.e. partially funded by LP's
+            uint256 winningTicket = getWinningTicket(randomNumber, (lotteryState.lpPool * 10000) / TICKET_PRICE);
+
+            if (winningTicket <= totalTicketCountBps) {
+                lastWinnerAddress = findWinnerFromUsers(winningTicket);
+
+                uint256 winAmount = lotteryState.lpPool;
+                User storage winner = usersInfo[lastWinnerAddress];
+                winner.winningsClaimable += winAmount;
+
+                // TODO: distributeUserPoolToLps();
+                // TODO: returnLpPoolBackToLps();
+                returnLpPoolBackToLps();
+
+                // TODO: emit event
+            }
+        }
+
+        // Reset ticket purchases and lottery variables for the next round
+        clearUserTicketPurchases();
+        userPoolTotal = 0;
+        lpPoolTotal = 0;
+        totalTicketCountBps = 0;
+        // Reset fee accumulators, LP fee total reset in its own function
+        lotteryState.lastDrawBlock = block.number;
+        lotteryState.lpPool = 0;
+
+        // Stake the LP's
+        stakeLps();
+    }
+
+
+    function stakeLps() private {
+        for (uint256 i = 0; i < activeLpAddresses.length; i++) {
+            address lpAddress = activeLpAddresses[i];
+            LP storage lp = lpsInfo[lpAddress];
+            if (lp.active) {
+                // lp.principal is always dividable by 100
+                lp.stake = (lp.principal * LP_RISK_PERCENTAGE) / 100;
+                // lp.stake is always non-negative
+                lpPoolTotal += lp.stake;
+                lp.principal -= lp.stake;
+            }
+        }
+    }
+
+    function clearUserTicketPurchases() internal {
+        for (uint256 i = 0; i < activeUserAddresses.length; i++) {
+            address userAddress = activeUserAddresses[i];
+            usersInfo[userAddress].ticketsPurchasedTotalBps = 0;
+            usersInfo[userAddress].active = false;
+        }
+        // After resetting usersInfo, reset the activeUserAddresses array
+        delete activeUserAddresses;
+    }
+
+    function returnLpPoolBackToLps() private {
+        for (uint256 i = 0; i < activeLpAddresses.length; i++) {
+            address lpAddress = activeLpAddresses[i];
+            LP storage lp = lpsInfo[lpAddress];
+            // Add each LP's stake back to their principal
+            if (lp.active) {
+                lp.principal = lp.stake + lp.principal;
+                lp.stake = 0;
+            }
+        }
     }
 
     function findWinnerFromUsers(uint256 winningTicket) private view returns (address) {

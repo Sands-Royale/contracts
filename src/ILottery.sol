@@ -28,24 +28,4 @@ interface ILottery {
     }
 
     event EntropyResult(uint64 sequenceNumber, bytes32 randomNumber);
-
-/*     function runLottery() external;
-
-    function purchaseTickets() external;
-
-    function withdrawWinnings() external;
-
-    function withdrawReferralFees() external;
-
-    function withdrawProtocolFees() external;
-
-    function withdrawAllLP() external;
-
-    function lpDeposit() external;
-
-    function drawWinner() external;
-
-    function withdrawLPFee() external;
-
-    function withdrawUserPoolForLP() external; */
 }
